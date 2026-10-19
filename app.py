@@ -165,67 +165,104 @@ with tab1:
 # TAB 2
 # ============================================================
 with tab2:
-    st.subheader("② 수주·계약잔액 → 매출")
+    st.subheader("② 계약 변동 → 사업별 수주잔고 → 매출 기반")
+    st.markdown("""<div class="doosan-note"><b>분석 흐름</b><br>
+    ① 연도별 계약 증감은 얼마나 발생했는가? → ② 건축·토목 중 어디에서 발생했는가? →
+    ③ 계약잔액은 얼마나 남았는가? → ④ 어떤 주요 공사가 잔액을 구성하는가? →
+    ⑤ 실제 공사매출과 어떻게 연결되는가?</div>""", unsafe_allow_html=True)
+    st.info("**자료 구분:** 아래 '계약 증감액'은 사업보고서의 공사도급계약 변동액으로, 신규수주와 기존 계약변경 등을 포함할 수 있습니다. 순수 신규수주액이라고 단정하지 않습니다. 2026 H1은 반기 수치입니다.")
 
-    st.markdown("""
-    <div class="doosan-card"><b>왜 분석하나요?</b><br><br>
-    건설업은 공사를 수주했다고 계약금액 전체가 즉시 매출이 되는 것이 아니라 공사가 진행됨에 따라 매출로 인식됩니다.
-    따라서 현재 매출뿐 아니라 확보한 계약잔액과 그중 실제 매출로 전환되는 금액을 함께 봐야 향후 사업성과를 이해할 수 있습니다.
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("### 1. 2023~2026 H1 공사도급계약 증감: 일감은 얼마나 늘었나?")
+    cols = st.columns(4)
+    for col, (_, r) in zip(cols, contract_flow.iterrows()):
+        col.metric(f"{r['기간']} 계약 증감", f"{r['계약증감액_억원']/10000:.2f}조원")
+    fig = px.bar(contract_flow, x="기간", y="계약증감액_억원", text="계약증감액_억원",
+                 labels={"계약증감액_억원":"계약 증감액(억원)","기간":""}, title="연도별 공사도급계약 증감액")
+    fig.update_traces(texttemplate="%{y:,.0f}억", textposition="outside")
+    fig.update_layout(xaxis_type="category", yaxis_rangemode="tozero")
+    st.plotly_chart(fig, use_container_width=True)
+    change = contract_flow.set_index("기간")["계약증감액_억원"]
+    st.markdown(f"""<div class="doosan-card"><b>해석</b><br>
+    2024년 계약 증감액은 {change['2024']/10000:.2f}조원으로 2023년 {change['2023']/10000:.2f}조원보다 커졌습니다.
+    2025년에는 {change['2025']/10000:.2f}조원으로 감소했습니다. 다만 이 수치는 신규수주 실적만을 뜻하지 않으며,
+    2026년 상반기 {change['2026 H1']/10000:.2f}조원은 6개월 집계이므로 연간 실적과 직접 비교하지 않습니다.</div>""", unsafe_allow_html=True)
 
-    st.markdown("""
-    <div class="doosan-card"><b>어떻게 분석하나요?</b><br><br>
-    2023년부터 2026년 상반기까지 공사도급계약 공시를 바탕으로
-    <b>기초 계약잔액 → 계약 증감 → 공사매출 → 기말 계약잔액</b>의 흐름을 분석합니다.
-    건축과 토목도 구분해 어느 사업에 계약잔액이 형성되어 있는지 확인합니다.
-    공시의 '계약 증감액'에는 신규수주뿐 아니라 기존 계약금액 변경 등이 포함될 수 있으므로 신규수주액으로 단정하지 않습니다.
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("### 2. 건축 vs 토목: 계약 증감은 어디에서 발생했나?")
+    seg_fig = px.bar(contract_segment, x="기간", y="계약증감액_억원", color="구분", barmode="stack",
+                     text="계약증감액_억원", title="건축·토목 공사도급계약 증감 구성",
+                     labels={"계약증감액_억원":"계약 증감액(억원)","기간":"","구분":""},
+                     color_discrete_map={"건축":"#1169c2","토목":"#80c4f4"})
+    seg_fig.update_traces(texttemplate="%{y:,.0f}", textposition="inside")
+    seg_fig.update_layout(xaxis_type="category")
+    st.plotly_chart(seg_fig, use_container_width=True)
+    seg_share = contract_segment.copy()
+    seg_share["합계"] = seg_share.groupby("기간")["계약증감액_억원"].transform("sum")
+    seg_share["비중"] = seg_share["계약증감액_억원"] / seg_share["합계"] * 100
+    seg_pivot = seg_share.pivot(index="구분", columns="기간", values="비중").reindex(index=["건축","토목"],columns=["2023","2024","2025","2026 H1"])
+    st.markdown("**연도별 건축·토목 계약 증감 비중 (%)**")
+    st.dataframe(seg_pivot.apply(lambda col: col.map(lambda v:f"{v:.1f}%")), use_container_width=True)
+    t23 = contract_segment[(contract_segment['기간']=='2023') & (contract_segment['구분']=='토목')]['계약증감액_억원'].iloc[0]
+    t24 = contract_segment[(contract_segment['기간']=='2024') & (contract_segment['구분']=='토목')]['계약증감액_억원'].iloc[0]
+    st.markdown(f"""<div class="doosan-card"><b>해석</b><br>2024년 토목 계약 증감액은 {t23:,.0f}억원에서 {t24:,.0f}억원으로 증가했습니다.
+    이는 해당 기간 토목 공사계약 변동이 확대되었다는 의미이며, 구체적인 신규 계약별 기여도는 별도 확인이 필요합니다.</div>""", unsafe_allow_html=True)
 
-    a,b,c,d = st.columns(4)
-    a.metric("2023 기말 계약잔액", f"{contract_flow.iloc[0]['기말계약잔액_억원']:,.0f}억원")
-    b.metric("2024 기말 계약잔액", f"{contract_flow.iloc[1]['기말계약잔액_억원']:,.0f}억원")
-    c.metric("2025 기말 계약잔액", f"{contract_flow.iloc[2]['기말계약잔액_억원']:,.0f}억원")
-    d.metric("2026 H1 기말 계약잔액", f"{contract_flow.iloc[3]['기말계약잔액_억원']:,.0f}억원")
+    st.markdown("### 3. 확보한 일감: 기말 계약잔액은 얼마나 남았나?")
+    balance_fig = px.line(contract_flow, x="기간", y="기말계약잔액_억원", markers=True,
+                          title="연도별 기말 공사도급계약 잔액", labels={"기말계약잔액_억원":"기말 계약잔액(억원)","기간":""})
+    balance_fig.update_traces(mode="lines+markers+text", text=[f"{v/10000:.2f}조" for v in contract_flow['기말계약잔액_억원']],textposition="top center")
+    balance_fig.update_layout(xaxis_type="category")
+    st.plotly_chart(balance_fig,use_container_width=True)
+    balance_seg_fig = px.bar(contract_segment,x="기간",y="기말계약잔액_억원",color="구분",barmode="stack",
+                             title="건축·토목 기말 계약잔액 구성",labels={"기말계약잔액_억원":"기말 계약잔액(억원)","기간":"","구분":""},
+                             color_discrete_map={"건축":"#1169c2","토목":"#80c4f4"})
+    balance_seg_fig.update_layout(xaxis_type="category")
+    st.plotly_chart(balance_seg_fig,use_container_width=True)
+    bal = contract_segment.copy()
+    bal['비중'] = bal['기말계약잔액_억원']/bal.groupby('기간')['기말계약잔액_억원'].transform('sum')*100
+    bp = bal.pivot(index='구분',columns='기간',values='비중').reindex(index=['건축','토목'],columns=['2023','2024','2025','2026 H1'])
+    st.markdown('**연도별 기말 계약잔액 구성비 (%)**')
+    st.dataframe(bp.apply(lambda c:c.map(lambda v:f'{v:.1f}%')),use_container_width=True)
+    st.caption('공사도급계약 잔액 공시는 건축·토목으로 구분됩니다. 해외건축·기타는 이 표에서 별도 잔액으로 공시되지 않습니다.')
 
-    fig_flow = go.Figure()
-    fig_flow.add_trace(go.Bar(x=contract_flow["기간"], y=contract_flow["계약증감액_억원"], name="계약 증감액"))
-    fig_flow.add_trace(go.Bar(x=contract_flow["기간"], y=contract_flow["공사매출_억원"], name="공사매출"))
-    fig_flow.update_layout(barmode="group", title="계약 증감액과 공사매출", yaxis_title="억원", legend_title_text="")
-    st.plotly_chart(fig_flow, use_container_width=True)
+    st.markdown('### 4. 주요 공사별 계약잔액: 어떤 현장이 미래 일감을 구성하나?')
+    st.caption('2025년 사업보고서 II.4.다 수주상황의 개별 표시 계약을 기준으로 합니다. 나머지 공사는 합산 공시되어 있으므로 아래 순위는 전체 현장 순위가 아닙니다. 단위: 억원.')
+    major_2025 = pd.DataFrame([
+        ('청주운천APT','민간',4177.77),('구미중앙숲지주','민간',3890.06),('강화2지주택','민간',2794.24),
+        ('대야주택재개발','민간',2736.15),('남양주센트럴N49','민간',2429.88),('구포7공동주택지주택','민간',2425.40),
+        ('천안청당APT','민간',2392.34),('부개4주택재개발','민간',1846.50),('칠곡경대병원아파트','민간',1815.89),
+        ('도화4구역재개발','민간',1745.43),('수원영화APT','민간',1574.66),('인덕원동탄11공구','관급',1568.86),
+        ('광양중마주공지주택','민간',1520.59),('작전동재개발','민간',1381.11),('삼산대보APT','민간',1237.88),
+        ('청라연장4공구','관급',676.39),('원주원동남산재개발','민간',164.50),('송림3구역','민간',157.04)
+    ],columns=['공사명','발주 구분','2025년말 계약잔액(억원)'])
+    n = st.slider('표시할 주요 공사 수',5,18,10,key='major2025n')
+    top = major_2025.nlargest(n,'2025년말 계약잔액(억원)').sort_values('2025년말 계약잔액(억원)')
+    ftop = px.bar(top,x='2025년말 계약잔액(억원)',y='공사명',color='발주 구분',orientation='h',
+                  title='2025년말 주요 공사별 계약잔액 (개별 공시 현장 중)',
+                  color_discrete_map={'민간':'#1169c2','관급':'#80c4f4'})
+    st.plotly_chart(ftop,use_container_width=True)
+    with st.expander('2025년 개별 공시 현장 데이터 확인'):
+        st.dataframe(major_2025.sort_values('2025년말 계약잔액(억원)',ascending=False),use_container_width=True,hide_index=True)
+    st.caption('출처: 두산건설 2025년 사업보고서(2026.03.31 제출), 공시 페이지 24의 수주상황. 원문 백만원을 억원으로 환산. 공시의 기타 공사 합산액은 개별 현장 그래프에 포함하지 않음.')
 
-    fig_balance = go.Figure()
-    fig_balance.add_trace(go.Scatter(x=contract_flow["기간"], y=contract_flow["기말계약잔액_억원"], mode="lines+markers+text",
-                                     text=contract_flow["기말계약잔액_억원"].map(lambda x:f"{x/10000:.2f}조"), textposition="top center", name="기말 계약잔액"))
-    fig_balance.update_layout(title="기말 계약잔액 추이", yaxis_title="억원", legend_title_text="")
-    st.plotly_chart(fig_balance, use_container_width=True)
-
-    st.markdown("#### 건축과 토목으로 나누면?")
-    fig_seg = px.bar(contract_segment, x="기간", y="기말계약잔액_억원", color="구분", barmode="stack",
-                     labels={"기말계약잔액_억원":"기말 계약잔액(억원)","기간":"","구분":""}, title="건축·토목 기말 계약잔액")
-    st.plotly_chart(fig_seg, use_container_width=True)
-
-    st.markdown("#### 연도별 건축·토목 계약잔액 비중 (%)")
-    st.caption("각 기간의 건축·토목 기말 계약잔액 합계를 100%로 계산했습니다. 2026 H1은 상반기 말 잔액입니다.")
-    contract_share = contract_segment.copy()
-    contract_share["기간합계_억원"] = contract_share.groupby("기간")["기말계약잔액_억원"].transform("sum")
-    contract_share["비중_%"] = contract_share["기말계약잔액_억원"] / contract_share["기간합계_억원"] * 100
-    contract_share_table = (contract_share.pivot_table(index="구분", columns="기간", values="비중_%", aggfunc="sum")
-                            .reindex(index=["건축", "토목"], columns=["2023", "2024", "2025", "2026 H1"]))
-    contract_share_table.loc["합계"] = contract_share_table.sum(axis=0)
-    st.dataframe(contract_share_table.style.format("{:.1f}%"), use_container_width=True)
-
-    st.markdown("""
-    <div class="doosan-next"><b>이 탭에서 얻을 수 있는 결론은 무엇인가요?</b><br><br>
-    두산건설의 공사계약 잔액은 2023년 말 약 9.14조원, 2024년 말 약 9.86조원, 2025년 말 약 10.24조원으로 확대됐고,
-    2026년 상반기 말에도 약 <b>9.98조원</b>이 남아 있습니다. 계약잔액은 향후 공사 진행에 따라 매출로 전환될 수 있는 기반입니다.
-    그러나 계약잔액이 크다는 사실만으로 사업성과가 완성되는 것은 아닙니다. 공사 진행 후 매출이 인식되고,
-    이후 청구와 회수가 이루어져야 실제 자금으로 연결됩니다.<br><br>
-    <b>이에 따라 다음 탭에서는 매출로 인식된 성과가 계약자산과 매출채권을 거쳐 실제 청구와 회수로 어떻게 이어지는지 분석합니다.</b>
-    </div>
-    """, unsafe_allow_html=True)
-    st.caption("주의: 화면에서는 이해를 돕기 위해 '수주·계약잔액'이라고 표현하지만, 공시 원문은 '공사도급계약'입니다. 계약 증감액을 신규수주액과 동일하게 해석하지 않습니다.")
+    st.markdown('### 5. 계약잔액은 매출로 어떻게 연결되나?')
+    st.markdown('**계약잔액 증감 구조: 기초 잔액 + 공사도급계약 증감 − 공사매출 = 기말 잔액**')
+    bridge = contract_flow[['기간','기초계약잔액_억원','계약증감액_억원','공사매출_억원','기말계약잔액_억원']].copy()
+    bridge['계산기말_억원'] = bridge['기초계약잔액_억원'] + bridge['계약증감액_억원'] - bridge['공사매출_억원']
+    bridge['차이_억원'] = (bridge['기말계약잔액_억원']-bridge['계산기말_억원']).round(2)
+    st.dataframe(bridge.style.format({c:'{:,.2f}' for c in bridge.columns if c!='기간'}),use_container_width=True,hide_index=True)
+    fcomp=go.Figure()
+    fcomp.add_trace(go.Bar(name='계약 증감액',x=contract_flow['기간'],y=contract_flow['계약증감액_억원']))
+    fcomp.add_trace(go.Bar(name='공사매출',x=contract_flow['기간'],y=contract_flow['공사매출_억원']))
+    fcomp.update_layout(barmode='group',title='계약 증감액 vs 공사매출 (동일 공시 범위)',yaxis_title='억원',xaxis_type='category')
+    st.plotly_chart(fcomp,use_container_width=True)
+    latest=contract_flow.iloc[-1]
+    st.markdown(f"""<div class="doosan-next"><b>이 탭의 최종 결론</b><br><br>
+    ① 2024년 공사도급계약 증감액은 확대되었다가 2025년에 감소했습니다. 이는 순수 신규수주액과는 구분해야 합니다.<br>
+    ② 2025년 말 계약잔액은 약 <b>{contract_flow.iloc[2]['기말계약잔액_억원']/10000:.2f}조원</b>,
+    2026년 상반기 말은 약 <b>{latest['기말계약잔액_억원']/10000:.2f}조원</b>입니다.<br>
+    ③ 계약잔액은 향후 공사 진행에 따라 매출로 인식될 수 있는 일감의 기반이지만, 수익성과 현금회수를 보장하지는 않습니다.<br><br>
+    <b>다음 탭에서는 인식한 매출이 계약자산·매출채권과 어떤 관계를 갖는지 확인합니다.</b></div>""",unsafe_allow_html=True)
+    st.caption('자료: 두산건설 2023~2025년 사업보고서 및 2026년 반기 공시. 연결 공사도급계약 변동과 지배회사 사업별 매출은 집계 범위가 다를 수 있으므로 동일 지표로 혼용하지 않습니다.')
 
 # ============================================================
 # TAB 3
