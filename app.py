@@ -140,6 +140,15 @@ with tab1:
                      labels={"매출액_억원":"매출액(억원)","기간":"","사업":""}, title="2023~2026 H1 사업별 매출")
     st.plotly_chart(fig_mix, use_container_width=True)
 
+    st.markdown("#### 연도별 사업 매출 비중 (%)")
+    st.caption("각 기간의 전체 매출액을 100%로 계산했습니다. 2026 H1은 상반기 매출 기준입니다.")
+    period_order = ["2023", "2024", "2025", "2026 H1"]
+    segment_order = ["건축", "토목", "해외건축", "기타"]
+    share_table = (sales_mix.pivot_table(index="사업", columns="기간", values="비중", aggfunc="sum")
+                   .reindex(index=segment_order, columns=period_order))
+    share_table.loc["합계"] = share_table.sum(axis=0)
+    st.dataframe(share_table.style.format("{:.1f}%"), use_container_width=True)
+
     totals = sales_mix.groupby("기간", as_index=False)["매출액_억원"].sum()
     st.dataframe(totals.style.format({"매출액_억원":"{:,.0f}"}), hide_index=True, use_container_width=True)
 
@@ -196,6 +205,16 @@ with tab2:
     fig_seg = px.bar(contract_segment, x="기간", y="기말계약잔액_억원", color="구분", barmode="stack",
                      labels={"기말계약잔액_억원":"기말 계약잔액(억원)","기간":"","구분":""}, title="건축·토목 기말 계약잔액")
     st.plotly_chart(fig_seg, use_container_width=True)
+
+    st.markdown("#### 연도별 건축·토목 계약잔액 비중 (%)")
+    st.caption("각 기간의 건축·토목 기말 계약잔액 합계를 100%로 계산했습니다. 2026 H1은 상반기 말 잔액입니다.")
+    contract_share = contract_segment.copy()
+    contract_share["기간합계_억원"] = contract_share.groupby("기간")["기말계약잔액_억원"].transform("sum")
+    contract_share["비중_%"] = contract_share["기말계약잔액_억원"] / contract_share["기간합계_억원"] * 100
+    contract_share_table = (contract_share.pivot_table(index="구분", columns="기간", values="비중_%", aggfunc="sum")
+                            .reindex(index=["건축", "토목"], columns=["2023", "2024", "2025", "2026 H1"]))
+    contract_share_table.loc["합계"] = contract_share_table.sum(axis=0)
+    st.dataframe(contract_share_table.style.format("{:.1f}%"), use_container_width=True)
 
     st.markdown("""
     <div class="doosan-next"><b>이 탭에서 얻을 수 있는 결론은 무엇인가요?</b><br><br>
